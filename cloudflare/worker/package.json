@@ -1,0 +1,14 @@
+{
+  "name": "donorgram-donai-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "wrangler": "^4.45.0"
+  }
+}

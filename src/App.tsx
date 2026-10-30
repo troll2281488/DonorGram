@@ -14,7 +14,8 @@ import {
   addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp,
   setDoc, where, limit, getDocs, getDoc, startAt, endAt, orderBy as orderByField
 } from "firebase/firestore";
-import { auth, db, firebaseReady } from "./firebase";
+import { auth, db, realtimeDb, firebaseReady } from "./firebase";
+import { ref as dbRef, set as dbSet } from "firebase/database";
 import { uploadRoomMedia, getRoomMediaUrl } from "./legacy/media";
 
 type ChatMessage = {
@@ -84,6 +85,17 @@ export default function App() {
         : "Войди или создай аккаунт, чтобы открыть настоящий чат.");
     });
   }, []);
+
+  useEffect(() => {
+    if (!realtimeDb || !user || !rooms.length) return;
+    // Mirror only the signed-in user's own membership for Realtime Database media ACLs.
+    const memberships = rooms.filter(room => room.members?.includes(user.uid));
+    memberships.forEach(room => {
+      void dbSet(dbRef(realtimeDb, `roomMembers/${room.id}/${user.uid}`), true).catch(() => {
+        setNotice("Не удалось синхронизировать доступ к медиа. Проверь Database Rules.");
+      });
+    });
+  }, [rooms, user]);
 
   useEffect(() => {
     if (!db || !user) {

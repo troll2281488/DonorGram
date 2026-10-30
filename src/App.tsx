@@ -14,8 +14,8 @@ import {
   addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp,
   setDoc, where, limit, getDocs, getDoc, startAt, endAt, orderBy as orderByField
 } from "firebase/firestore";
-import { auth, db, realtimeDb, firebaseReady, functions } from "./firebase";
-import { httpsCallable } from "firebase/functions";
+import { auth, db, realtimeDb, firebaseReady } from "./firebase";
+
 import { ref as dbRef, set as dbSet } from "firebase/database";
 import { uploadRoomMedia, getRoomMediaUrl } from "./legacy/media";
 
@@ -293,19 +293,27 @@ export default function App() {
     e.preventDefault();
     const p = aiPrompt.trim();
     if (!p || aiBusy) return;
-    if (!user || !functions) {
+    if (!user || !auth?.currentUser) {
       setAiAnswer("Войди в аккаунт, чтобы пользоваться DonAI.");
       return;
     }
     setAiBusy(true);
     setAiAnswer("");
     try {
-      const call = httpsCallable<{ prompt: string }, { answer: string }>(functions, "askDonAI");
-      const result = await call({ prompt: p });
-      setAiAnswer(result.data.answer || "Модель не вернула текст.");
+      const endpoint = import.meta.env.VITE_DONAI_WORKER_URL;
+      if (!endpoint) throw new Error("Адрес DonAI Worker ещё не настроен.");
+      const idToken = await auth.currentUser.getIdToken();
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ prompt: p })
+      });
+      const payload = await response.json().catch(() => ({})) as { answer?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+      setAiAnswer(payload.answer || "Модель не вернула текст.");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Неизвестная ошибка";
-      setAiAnswer(`Не удалось получить ответ DonAI: ${message}. Проверь, что Cloud Function развёрнута и секрет OFOX_API_KEY добавлен в Firebase.`);
+      setAiAnswer(`Не удалось получить ответ DonAI: ${message}. Проверь адрес Cloudflare Worker и секрет OFOX_API_KEY.`);
     } finally {
       setAiBusy(false);
     }

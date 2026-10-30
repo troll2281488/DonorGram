@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function roomMember(roomId) {
+      return signedIn() && (
+        roomId == 'nova_lounge' ||
+        (firestore.exists(/databases/(default)/documents/rooms/$(roomId))
+          && request.auth.uid in firestore.get(/databases/(default)/documents/rooms/$(roomId)).data.members)
+      );
+    }
+    match /rooms/{roomId}/{ownerUid}/{fileName} {
+      allow read: if roomMember(roomId);
+      allow create: if roomMember(roomId)
+        && request.auth.uid == ownerUid
+        && request.resource.size > 0
+        && request.resource.size <= 83886080
+        && request.resource.contentType != null;
+      allow update, delete: if signedIn() && request.auth.uid == ownerUid;
+    }
+  }
+}

@@ -300,7 +300,7 @@ export default function App() {
     setAiBusy(true);
     setAiAnswer("");
     try {
-      const endpoint = import.meta.env.VITE_DONAI_WORKER_URL;
+      const endpoint = import.meta.env.VITE_DONAI_WORKER_URL || "https://donorgram.maxmineev67.workers.dev";
       if (!endpoint) throw new Error("Адрес DonAI Worker ещё не настроен.");
       const idToken = await auth.currentUser.getIdToken();
       const response = await fetch(endpoint, {

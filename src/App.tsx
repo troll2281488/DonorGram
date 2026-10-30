@@ -112,7 +112,7 @@ export default function App() {
     const q = query(collection(db, "rooms", activeId, "messages"), orderBy("createdAt", "asc"), limit(100));
     return onSnapshot(q, snap => {
       setMessages(prev => ({ ...prev, [activeId]: snap.docs.map(d => ({ id: d.id, ...d.data() } as LocalMessage)) }));
-    }, () => setNotice("Не удалось загрузить сообщения этого чата."));
+    }, error => setNotice(`Не удалось загрузить сообщения: ${error.code || "unknown"} — ${error.message || "без подробностей"}`));
   }, [user, activeId]);
 
   const activeRoom = rooms.find(r => r.id === activeId) || (user ? { id: "loading", name: "Загрузка чатов…", type: "group" as const, members: [user.uid] } : { id: "guest", name: "Войди в аккаунт", type: "group" as const, members: [] });

@@ -84,7 +84,7 @@ export default function App() {
       const next = snap.docs.map(d => ({ id: d.id, ...d.data() } as ChatRoom));
       setRooms(next);
       if (next.length) {
-        if (!next.some(r => r.id === activeId)) setActiveId(next[0].id);
+        setActiveId(current => next.some(r => r.id === current) ? current : next[0].id);
         initializedRoomFor.current = user.uid;
       } else if (initializedRoomFor.current !== user.uid) {
         initializedRoomFor.current = user.uid;

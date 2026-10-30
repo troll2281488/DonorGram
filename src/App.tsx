@@ -15,9 +15,11 @@ import {
   setDoc, where, limit, getDocs, getDoc, startAt, endAt, orderBy as orderByField
 } from "firebase/firestore";
 import { auth, db, firebaseReady } from "./firebase";
+import { uploadRoomMedia, getRoomMediaUrl } from "./legacy/media";
 
 type ChatMessage = {
   id: string; text: string; uid: string; displayName: string;
+  media?: { storagePath: string; mediaType: "image" | "video" | "file"; name: string; size: number; contentType: string };
   createdAt?: { toDate?: () => Date } | null;
 };
 type ChatRoom = { id: string; name: string; type: "direct" | "group"; members: string[]; lastMessage?: string };
@@ -55,6 +57,8 @@ export default function App() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [messages, setMessages] = useState<Record<string, LocalMessage[]>>({});
   const [draft, setDraft] = useState("");
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchText, setSearchText] = useState("");
   const [notice, setNotice] = useState("Войди или создай аккаунт, чтобы открыть настоящий чат.");
   const [panel, setPanel] = useState<"none" | "ai" | "settings" | "newgroup" | "gps" | "calls">("none");
@@ -208,7 +212,7 @@ export default function App() {
     if (db && user && !["lobby", "ideas", "notes", "loading", "guest"].includes(activeId)) {
       try {
         await addDoc(collection(db, "rooms", activeId, "messages"), {
-          text, uid: user.uid, displayName: user.displayName || user.email || "Пользователь",
+          text, uid: user.uid, displayName: user.displayName || "Пользователь",
           createdAt: serverTimestamp(), type: "text"
         });
         setMessages(prev => ({ ...prev, [activeId]: (prev[activeId] || []).filter(m => m.id !== optimistic.id) }));
@@ -218,6 +222,34 @@ export default function App() {
     } else {
       setMessages(prev => ({ ...prev, [activeId]: (prev[activeId] || []).filter(m => m.id !== optimistic.id) }));
       setNotice("Сообщение не отправлено: выбери настоящий чат после входа в аккаунт.");
+    }
+  }
+
+  async function handleMediaSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !user || !db || !activeId || activeId === "loading" || activeId === "guest") return;
+    setMediaBusy(true);
+    try {
+      const media = await uploadRoomMedia(activeId, user.uid, file);
+      await addDoc(collection(db, "rooms", activeId, "messages"), {
+        text: "", uid: user.uid, displayName: user.displayName || "Пользователь",
+        media, createdAt: serverTimestamp(), type: "media"
+      });
+      setNotice("Вложение отправлено.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Не удалось отправить вложение.");
+    } finally {
+      setMediaBusy(false);
+    }
+  }
+
+  async function openMedia(storagePath: string) {
+    try {
+      const url = await getRoomMediaUrl(storagePath);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      setNotice("Не удалось открыть вложение. Возможно, файл удалён или нет доступа.");
     }
   }
 
@@ -325,13 +357,13 @@ export default function App() {
           <div className="day-divider"><span>НАЧАЛО ПРОСТРАНСТВА</span></div>
           {activeMessages.map((m, idx)=><div className={`message-row ${m.uid===user?.uid?"own-message":""}`} key={m.id}>
             <div className={`avatar message-avatar ${m.uid==="system"?"avatar-purple":""}`}>{initials(m.displayName)}</div>
-            <div className="message-body"><div className="message-meta"><strong>{m.displayName}</strong><span>{timeLabel(m)}</span>{m.uid===user?.uid&&<CheckCheck size={14} className="read-check"/>}</div><div className="message-bubble">{m.text}</div><div className="message-hover-actions"><button aria-label="Копировать сообщение" onClick={()=>{void navigator.clipboard?.writeText(m.text);setNotice("Текст сообщения скопирован, если браузер разрешил доступ.");}}><Copy size={13}/></button><button aria-label="Ответить" onClick={()=>setDraft(`↪ ${m.displayName}: `)}><MessageCircle size={13}/></button></div></div>
+            <div className="message-body"><div className="message-meta"><strong>{m.displayName}</strong><span>{timeLabel(m)}</span>{m.uid===user?.uid&&<CheckCheck size={14} className="read-check"/>}</div><div className="message-bubble">{m.text}{m.media && <div className="message-attachment"><button type="button" className="link-btn" onClick={()=>void openMedia(m.media!.storagePath)}>📎 {m.media.name} · {Math.max(1,Math.round(m.media.size/1024))} КБ — открыть</button></div>}</div><div className="message-hover-actions"><button aria-label="Копировать сообщение" onClick={()=>{void navigator.clipboard?.writeText(m.text);setNotice("Текст сообщения скопирован, если браузер разрешил доступ.");}}><Copy size={13}/></button><button aria-label="Ответить" onClick={()=>setDraft(`↪ ${m.displayName}: `)}><MessageCircle size={13}/></button></div></div>
           </div>)}
           {activeMessages.length===0 && <div className="empty-state"><div className="empty-illustration"><MessageCircle size={28}/></div><h3>Начни разговор</h3><p>Здесь пока тихо. Отправь первое сообщение — короткое и по делу.</p></div>}
           <div className="end-spacer"/>
         </section>
         <form className="composer" onSubmit={sendMessage}>
-          <div className="composer-toolbar"><div className="composer-tools"><button type="button" className="composer-tool" aria-label="Прикрепить файл" onClick={()=>setNotice("Загрузка медиа намеренно не включена в стартовый каркас: добавь Storage с лимитами размера и проверкой типа файла.")}><Paperclip size={17}/></button><button type="button" className="composer-tool" aria-label="Добавить изображение" onClick={()=>setNotice("Изображения будут загружаться по запросу после подключения Firebase Storage.")}><Image size={17}/></button><span className="tool-divider"/><button type="button" className="composer-tool" onClick={()=>setPanel("ai")}><Sparkles size={16}/><span>Спросить DonAI</span></button></div><span className="composer-hint">Enter — отправить</span></div>
+          <div className="composer-toolbar"><div className="composer-tools"><input ref={fileInputRef} type="file" hidden accept="image/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.zip" onChange={handleMediaSelected}/><button type="button" className="composer-tool" aria-label="Прикрепить файл" disabled={mediaBusy || !user} onClick={()=>fileInputRef.current?.click()}><Paperclip size={17}/></button><button type="button" className="composer-tool" aria-label="Добавить изображение" disabled={mediaBusy || !user} onClick={()=>{if(fileInputRef.current) {fileInputRef.current.accept="image/*";fileInputRef.current.click();}}}><Image size={17}/></button><span className="tool-divider"/><button type="button" className="composer-tool" onClick={()=>setPanel("ai")}><Sparkles size={16}/><span>Спросить DonAI</span></button></div><span className="composer-hint">{mediaBusy ? "Загружаю вложение…" : "Enter — отправить"}</span></div>
           <textarea aria-label="Текст сообщения" placeholder={user ? `Написать в ${activeRoom.name}...` : "Войди в аккаунт, чтобы переписываться"} value={draft} onChange={e=>setDraft(e.target.value)} disabled={!user || activeRoom.id === "loading"} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void sendMessage();}}} rows={2} maxLength={4000}/>
           <div className="composer-bottom"><div className="composer-status"><span className="status-lock"><ShieldCheck size={13}/></span><span>Сообщения до 4 000 символов</span></div><div className="composer-submit"><span className="char-count">{draft.length}/4000</span><button type="submit" className="send-btn" disabled={!user || activeRoom.id === "loading" || !draft.trim()}><span>Отправить</span><Send size={15}/></button></div></div>
         </form>

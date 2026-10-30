@@ -25,5 +25,5 @@ export const db = getFirestore(app);
 // Realtime Database используется только для событий с высокой частотой:
 // presence, сигналинг звонков и временные GPS-сессии.
 export const realtimeDb = getDatabase(app);
-// Медиа хранится в Storage; в Firestore остаются только метаданные и storagePath.
+// Вложения без Firebase Storage хранятся в RTDB (Base64), метаданные — в Firestore.
 export const storage = getStorage(app);

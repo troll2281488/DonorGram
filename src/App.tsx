@@ -135,9 +135,10 @@ export default function App() {
 
   useEffect(() => {
     if (!db || !user || !activeId || activeId === "lobby" || activeId === "ideas" || activeId === "notes") return;
-    const q = query(collection(db, "rooms", activeId, "messages"), orderBy("createdAt", "asc"), limit(100));
+    const q = query(collection(db, "rooms", activeId, "messages"), orderBy("createdAt", "desc"), limit(50));
     return onSnapshot(q, snap => {
-      setMessages(prev => ({ ...prev, [activeId]: snap.docs.map(d => ({ id: d.id, ...d.data() } as LocalMessage)) }));
+      const newestFirst = snap.docs.map(d => ({ id: d.id, ...d.data() } as LocalMessage));
+      setMessages(prev => ({ ...prev, [activeId]: newestFirst.reverse() }));
     }, error => setNotice(`Не удалось загрузить сообщения: ${error.code || "unknown"} — ${error.message || "без подробностей"}`));
   }, [user, activeId]);
 

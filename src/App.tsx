@@ -157,7 +157,7 @@ export default function App() {
     setUserSearchBusy(true); setUserResults([]);
     try {
       const term = userSearch.trim().toLocaleLowerCase();
-      const q = query(collection(db, "publicProfiles"), orderByField("displayNameLower"), startAt(term), endAt(term + "\\uf8ff"), limit(12));
+      const q = query(collection(db, "publicProfiles"), orderByField("displayNameLower"), startAt(term), endAt(term + "\uf8ff"), limit(12));
       const snap = await getDocs(q);
       setUserResults(snap.docs.map(d => ({ uid: String(d.data().uid || d.id), displayName: String(d.data().displayName || "Пользователь") })).filter(p => p.uid !== user.uid));
       if (!snap.docs.length) setNotice("Пользователи с таким именем не найдены.");

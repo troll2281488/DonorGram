@@ -3,6 +3,7 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
 
 // Firebase web configuration for the existing DonorGram project.
 // These values identify the web app; access is controlled by Firebase Auth
@@ -27,3 +28,4 @@ export const db = getFirestore(app);
 export const realtimeDb = getDatabase(app);
 // Вложения без Firebase Storage хранятся в RTDB (Base64), метаданные — в Firestore.
 export const storage = getStorage(app);
+export const functions = getFunctions(app, "us-central1");

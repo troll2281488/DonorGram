@@ -12,7 +12,7 @@ import {
 import type { User } from "firebase/auth";
 import {
   addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp,
-  setDoc, where, limit, getDocs, startAt, endAt, orderBy as orderByField
+  setDoc, where, limit, getDocs, getDoc, startAt, endAt, orderBy as orderByField
 } from "firebase/firestore";
 import { auth, db, firebaseReady } from "./firebase";
 
@@ -131,11 +131,11 @@ export default function App() {
           uid: cred.user.uid, displayName: displayName.trim() || email.split("@")[0],
           email: email.trim().toLowerCase(), createdAt: serverTimestamp(), discoverable: true
         });
-        await setDoc(doc(db!, "publicProfiles", cred.user.uid), { uid: cred.user.uid, displayName: displayName.trim() || email.split("@")[0], createdAt: serverTimestamp() });
+        await setDoc(doc(db!, "publicProfiles", cred.user.uid), { uid: cred.user.uid, displayName: displayName.trim() || email.split("@")[0], displayNameLower: (displayName.trim() || email.split("@")[0]).toLocaleLowerCase(), createdAt: serverTimestamp() });
         setNotice("Аккаунт создан. Твой профиль виден зарегистрированным пользователям по имени.");
       } else {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-        await setDoc(doc(db!, "publicProfiles", cred.user.uid), { uid: cred.user.uid, displayName: cred.user.displayName || email.split("@")[0] }, { merge: true });
+        await setDoc(doc(db!, "publicProfiles", cred.user.uid), { uid: cred.user.uid, displayName: cred.user.displayName || email.split("@")[0], displayNameLower: (cred.user.displayName || email.split("@")[0]).toLocaleLowerCase() }, { merge: true });
       }
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Не удалось войти. Проверь данные.");
@@ -148,7 +148,7 @@ export default function App() {
     setUserSearchBusy(true); setUserResults([]);
     try {
       const term = userSearch.trim().toLocaleLowerCase();
-      const q = query(collection(db, "publicProfiles"), orderByField("displayName"), startAt(term), endAt(term + "\\uf8ff"), limit(12));
+      const q = query(collection(db, "publicProfiles"), orderByField("displayNameLower"), startAt(term), endAt(term + "\\uf8ff"), limit(12));
       const snap = await getDocs(q);
       setUserResults(snap.docs.map(d => ({ uid: String(d.data().uid || d.id), displayName: String(d.data().displayName || "Пользователь") })).filter(p => p.uid !== user.uid));
       if (!snap.docs.length) setNotice("Пользователи с таким именем не найдены.");
@@ -161,7 +161,7 @@ export default function App() {
     const members = [user.uid, other.uid].sort();
     const roomId = "dm_" + members.join("_");
     try {
-      await setDoc(doc(db, "rooms", roomId), { name: other.displayName, type: "direct", members, createdBy: user.uid, createdAt: serverTimestamp() }, { merge: true });
+      const roomRef = doc(db, "rooms", roomId);\n      const existing = await getDoc(roomRef);\n      if (!existing.exists()) await setDoc(roomRef, { name: other.displayName, type: "direct", members, createdBy: user.uid, createdAt: serverTimestamp() });
       setActiveId(roomId); setPanel("none"); setUserSearch(""); setUserResults([]);
       setNotice("Личный чат открыт. Теперь сообщения синхронизируются между участниками.");
     } catch { setNotice("Не удалось открыть чат. Проверь правила Firestore."); }

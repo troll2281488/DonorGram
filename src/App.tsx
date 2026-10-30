@@ -52,8 +52,8 @@ export default function App() {
   const [displayName, setDisplayName] = useState("");
   const [registerMode, setRegisterMode] = useState(false);
   const [activeId, setActiveId] = useState("lobby");
-  const [rooms, setRooms] = useState<ChatRoom[]>(DEMO_ROOMS);
-  const [messages, setMessages] = useState<Record<string, LocalMessage[]>>(DEMO_MESSAGES);
+  const [rooms, setRooms] = useState<ChatRoom[]>([]);
+  const [messages, setMessages] = useState<Record<string, LocalMessage[]>>({});
   const [draft, setDraft] = useState("");
   const [searchText, setSearchText] = useState("");
   const [notice, setNotice] = useState("Войди или создай аккаунт, чтобы открыть настоящий чат.");
@@ -76,7 +76,9 @@ export default function App() {
   useEffect(() => {
     if (!db || !user) {
       initializedRoomFor.current = null;
-      setRooms(DEMO_ROOMS);
+      setRooms([]);
+      setMessages({});
+      setActiveId("");
       return;
     }
     const q = query(collection(db, "rooms"), where("members", "array-contains", user.uid), limit(80));
@@ -110,8 +112,8 @@ export default function App() {
     }, () => setNotice("Не удалось загрузить сообщения этого чата."));
   }, [user, activeId]);
 
-  const activeRoom = rooms.find(r => r.id === activeId) || (user ? { id: "loading", name: "Загрузка чатов…", type: "group" as const, members: [user.uid] } : DEMO_ROOMS[0]);
-  const activeMessages = user ? (messages[activeId] || []) : (messages[activeId] || []);
+  const activeRoom = rooms.find(r => r.id === activeId) || (user ? { id: "loading", name: "Загрузка чатов…", type: "group" as const, members: [user.uid] } : { id: "guest", name: "Войди в аккаунт", type: "group" as const, members: [] });
+  const activeMessages = user ? (messages[activeId] || []) : [];
   const filteredRooms = useMemo(() => rooms.filter(r => r.name.toLowerCase().includes(searchText.toLowerCase())), [rooms, searchText]);
 
   async function submitAuth(e: React.FormEvent) {
@@ -137,13 +139,17 @@ export default function App() {
     e?.preventDefault();
     const text = draft.trim();
     if (!text) return;
+    if (!user || !db || !activeId || activeId === "loading" || activeId === "guest") {
+      setNotice("Чтобы отправлять настоящие сообщения, войди в аккаунт и дождись загрузки чатов.");
+      return;
+    }
     const optimistic: LocalMessage = {
       id: `local-${Date.now()}`, text, uid: user?.uid || "demo",
       displayName: user?.displayName || "Ты", local: true
     };
     setMessages(prev => ({ ...prev, [activeId]: [...(prev[activeId] || []), optimistic] }));
     setDraft("");
-    if (db && user && !["lobby", "ideas", "notes"].includes(activeId)) {
+    if (db && user && !["lobby", "ideas", "notes", "loading", "guest"].includes(activeId)) {
       try {
         await addDoc(collection(db, "rooms", activeId, "messages"), {
           text, uid: user.uid, displayName: user.displayName || user.email || "Пользователь",
@@ -154,7 +160,8 @@ export default function App() {
         setNotice("Сообщение оставлено в интерфейсе, но не доставлено. Проверь правила Firebase.");
       }
     } else {
-      setNotice("Демо: сообщение видно только в этом сеансе. Подключи Firebase для реальной доставки.");
+      setMessages(prev => ({ ...prev, [activeId]: (prev[activeId] || []).filter(m => m.id !== optimistic.id) }));
+      setNotice("Сообщение не отправлено: выбери настоящий чат после входа в аккаунт.");
     }
   }
 
@@ -239,7 +246,7 @@ export default function App() {
         </div>
         <div className="sidebar-bottom">
           <div className="traffic-card"><div className="traffic-icon"><Activity size={16}/></div><div><strong>Экономия трафика</strong><span>Текст первым · медиа по запросу</span></div><CheckCircleMini/></div>
-          <div className="sidebar-foot"><span><span className="pulse"/> {firebaseReady ? "Firebase настроен" : "Оффлайн-предпросмотр"}</span><button className="icon-btn" aria-label="Помощь" onClick={()=>setNotice("Nova — стартовый проект. См. README.md для подключения и развёртывания.")}><CircleHelp size={16}/></button></div>
+          <div className="sidebar-foot"><span><span className="pulse"/> {user ? "Аккаунт подключён" : "Требуется вход"}</span><button className="icon-btn" aria-label="Помощь" onClick={()=>setNotice("Nova — стартовый проект. См. README.md для подключения и развёртывания.")}><CircleHelp size={16}/></button></div>
         </div>
       </aside>
 
@@ -265,8 +272,8 @@ export default function App() {
         </section>
         <form className="composer" onSubmit={sendMessage}>
           <div className="composer-toolbar"><div className="composer-tools"><button type="button" className="composer-tool" aria-label="Прикрепить файл" onClick={()=>setNotice("Загрузка медиа намеренно не включена в стартовый каркас: добавь Storage с лимитами размера и проверкой типа файла.")}><Paperclip size={17}/></button><button type="button" className="composer-tool" aria-label="Добавить изображение" onClick={()=>setNotice("Изображения будут загружаться по запросу после подключения Firebase Storage.")}><Image size={17}/></button><span className="tool-divider"/><button type="button" className="composer-tool" onClick={()=>setPanel("ai")}><Sparkles size={16}/><span>Спросить DonAI</span></button></div><span className="composer-hint">Enter — отправить</span></div>
-          <textarea aria-label="Текст сообщения" placeholder={`Написать в ${activeRoom.name}...`} value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void sendMessage();}}} rows={2} maxLength={4000}/>
-          <div className="composer-bottom"><div className="composer-status"><span className="status-lock"><ShieldCheck size={13}/></span><span>Сообщения до 4 000 символов</span></div><div className="composer-submit"><span className="char-count">{draft.length}/4000</span><button type="submit" className="send-btn" disabled={!draft.trim()}><span>Отправить</span><Send size={15}/></button></div></div>
+          <textarea aria-label="Текст сообщения" placeholder={user ? `Написать в ${activeRoom.name}...` : "Войди в аккаунт, чтобы переписываться"} value={draft} onChange={e=>setDraft(e.target.value)} disabled={!user || activeRoom.id === "loading"} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void sendMessage();}}} rows={2} maxLength={4000}/>
+          <div className="composer-bottom"><div className="composer-status"><span className="status-lock"><ShieldCheck size={13}/></span><span>Сообщения до 4 000 символов</span></div><div className="composer-submit"><span className="char-count">{draft.length}/4000</span><button type="submit" className="send-btn" disabled={!user || activeRoom.id === "loading" || !draft.trim()}><span>Отправить</span><Send size={15}/></button></div></div>
         </form>
         <footer className="main-footer"><span>DONORGRAM NOVA <span className="footer-dot">•</span> BUILD 0.1</span><span><Wifi size={12}/> {firebaseReady ? "Состояние Firebase зависит от сети" : "Локальный режим"} <span className="footer-dot">•</span> Сделано для общения</span></footer>
       </main>

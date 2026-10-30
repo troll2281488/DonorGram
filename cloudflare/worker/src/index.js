@@ -5,6 +5,7 @@ const FIREBASE_ISSUER = `https://securetoken.google.com/${PROJECT_ID}`;
 const FIREBASE_KEYS = createRemoteJWKSet(
   new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
 );
+const requestCounts = new Map();
 const ALLOWED_ORIGINS = new Set([
   "https://troll2281488.github.io",
   "http://localhost:5173"
@@ -57,10 +58,11 @@ export default {
     // Simple per-isolate throttle; configure Cloudflare rate limiting for stronger global quotas.
     const now = Date.now();
     const slot = Math.floor(now / 60000);
-    const key = `rate:${uid}:${slot}`;
-    const used = Number(await env.DONAI_LIMITS.get(key) || "0");
-    if (used >= 8) return Response.json({ error: "Лимит DonAI: не больше 8 запросов в минуту." }, { status: 429, headers });
-    await env.DONAI_LIMITS.put(key, String(used + 1), { expirationTtl: 120 });
+    const key = `${uid}:${slot}`;
+    const used = requestCounts.get(key) || 0;
+    if (used >= 8) return Response.json({ error: "Лимит DonAI: не больше 8 запросов в минуту на экземпляр Worker." }, { status: 429, headers });
+    requestCounts.set(key, used + 1);
+    if (requestCounts.size > 5000) requestCounts.clear();
 
     let upstream;
     try {

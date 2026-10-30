@@ -73,7 +73,12 @@ export default function App() {
 
   useEffect(() => {
     if (!auth) return;
-    return onAuthStateChanged(auth, setUser);
+    return onAuthStateChanged(auth, nextUser => {
+      setUser(nextUser);
+      setNotice(nextUser
+        ? "Аккаунт подключён. Загружаем чаты…"
+        : "Войди или создай аккаунт, чтобы открыть настоящий чат.");
+    });
   }, []);
 
   useEffect(() => {

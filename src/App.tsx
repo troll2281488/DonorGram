@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, Archive, Bell, Check, CheckCheck, ChevronDown, CircleHelp,
   Compass, Copy, Hash, Image, MapPin, Menu, MessageCircle, MoreHorizontal,
@@ -56,7 +56,7 @@ export default function App() {
   const [messages, setMessages] = useState<Record<string, LocalMessage[]>>(DEMO_MESSAGES);
   const [draft, setDraft] = useState("");
   const [searchText, setSearchText] = useState("");
-  const [notice, setNotice] = useState("Демо-режим · данные пока локальные");
+  const [notice, setNotice] = useState("Войди или создай аккаунт, чтобы открыть настоящий чат.");
   const [panel, setPanel] = useState<"none" | "ai" | "settings" | "newgroup" | "gps" | "calls">("none");
   const [groupName, setGroupName] = useState("");
   const [groupMemberEmails, setGroupMemberEmails] = useState("");
@@ -66,6 +66,7 @@ export default function App() {
   const [locationState, setLocationState] = useState<"off" | "loading" | "ready" | "error">("off");
   const [coords, setCoords] = useState<{lat:number; lng:number} | null>(null);
   const [compactMode, setCompactMode] = useState(false);
+  const initializedRoomFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (!auth) return;
@@ -73,14 +74,33 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!db || !user) return;
+    if (!db || !user) {
+      initializedRoomFor.current = null;
+      setRooms(DEMO_ROOMS);
+      return;
+    }
     const q = query(collection(db, "rooms"), where("members", "array-contains", user.uid), limit(80));
-    return onSnapshot(q, snap => {
+    return onSnapshot(q, async snap => {
       const next = snap.docs.map(d => ({ id: d.id, ...d.data() } as ChatRoom));
-      setRooms(next.length ? next : []);
-      if (next.length && !next.some(r => r.id === activeId)) setActiveId(next[0].id);
-    }, () => setNotice("Не удалось загрузить чаты. Проверь Firebase Rules и интернет."));
-  }, [user, activeId]);
+      setRooms(next);
+      if (next.length) {
+        if (!next.some(r => r.id === activeId)) setActiveId(next[0].id);
+        initializedRoomFor.current = user.uid;
+      } else if (initializedRoomFor.current !== user.uid) {
+        initializedRoomFor.current = user.uid;
+        try {
+          const room = await addDoc(collection(db, "rooms"), {
+            name: "Nova Lounge", type: "group", members: [user.uid],
+            createdBy: user.uid, createdAt: serverTimestamp()
+          });
+          setActiveId(room.id);
+        } catch {
+          initializedRoomFor.current = null;
+          setNotice("Не удалось создать первый чат. Проверь публикацию Firestore Rules в Firebase Console.");
+        }
+      }
+    }, () => setNotice("Не удалось загрузить чаты. Проверь Firestore Rules и интернет."));
+  }, [user]);
 
   useEffect(() => {
     if (!db || !user || !activeId || activeId === "lobby" || activeId === "ideas" || activeId === "notes") return;
@@ -90,8 +110,8 @@ export default function App() {
     }, () => setNotice("Не удалось загрузить сообщения этого чата."));
   }, [user, activeId]);
 
-  const activeRoom = rooms.find(r => r.id === activeId) || DEMO_ROOMS.find(r => r.id === activeId) || DEMO_ROOMS[0];
-  const activeMessages = messages[activeId] || [];
+  const activeRoom = rooms.find(r => r.id === activeId) || (user ? { id: "loading", name: "Загрузка чатов…", type: "group" as const, members: [user.uid] } : DEMO_ROOMS[0]);
+  const activeMessages = user ? (messages[activeId] || []) : (messages[activeId] || []);
   const filteredRooms = useMemo(() => rooms.filter(r => r.name.toLowerCase().includes(searchText.toLowerCase())), [rooms, searchText]);
 
   async function submitAuth(e: React.FormEvent) {
@@ -186,7 +206,7 @@ export default function App() {
         </div>
         <div className="account-card">
           <div className="avatar self">{initials(user?.displayName || "Nova User")}</div>
-          <div className="account-copy"><strong>{user?.displayName || "Гость Nova"}</strong><span><i className={`status-dot ${isLoggedIn ? "online" : ""}`}/>{isLoggedIn ? "Аккаунт подключён" : "Предпросмотр"}</span></div>
+          <div className="account-copy"><strong>{user?.displayName || "Гость Nova"}</strong><span><i className={`status-dot ${isLoggedIn ? "online" : ""}`}/>{isLoggedIn ? "Аккаунт подключён" : "Не выполнен вход"}</span></div>
           <button className="icon-btn" aria-label="Настройки" onClick={() => setPanel("settings")}><Settings size={17}/></button>
         </div>
         {!isLoggedIn && <div className="auth-mini">

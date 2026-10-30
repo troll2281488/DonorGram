@@ -59,7 +59,7 @@ service cloud.firestore {
               && request.resource.data.media is map
               && request.resource.data.media.keys().hasOnly(['storagePath','mediaType','contentType','size','name'])
               && request.resource.data.media.storagePath is string
-              && request.resource.data.media.storagePath.matches('rooms/' + roomId + '/' + request.auth.uid + '/.*')
+              && request.resource.data.media.storagePath.matches('rtdb-media/rooms/' + roomId + '/' + request.auth.uid + '/.*')
               && request.resource.data.media.mediaType in ['image','video','file']
               && request.resource.data.media.contentType is string
               && request.resource.data.media.size is int

@@ -2,6 +2,7 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
+import { getStorage } from "firebase/storage";
 
 // Firebase web configuration for the existing DonorGram project.
 // These values identify the web app; access is controlled by Firebase Auth
@@ -24,3 +25,5 @@ export const db = getFirestore(app);
 // Realtime Database используется только для событий с высокой частотой:
 // presence, сигналинг звонков и временные GPS-сессии.
 export const realtimeDb = getDatabase(app);
+// Медиа хранится в Storage; в Firestore остаются только метаданные и storagePath.
+export const storage = getStorage(app);

@@ -93,6 +93,7 @@ export default function App() {
     return onSnapshot(q, async snap => {
       const next = snap.docs.map(d => ({ id: d.id, ...d.data() } as ChatRoom));
       setRooms(next);
+      setNotice("");
       if (next.length) {
         setActiveId(current => next.some(r => r.id === current) ? current : next[0].id);
         initializedRoomFor.current = user.uid;

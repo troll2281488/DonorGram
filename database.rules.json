@@ -1,0 +1,17 @@
+{
+  "rules": {
+    "rtdb-media": {
+      "rooms": {
+        "$roomId": {
+          "$ownerUid": {
+            "$fileId": {
+              ".read": "auth != null",
+              ".write": "auth != null && auth.uid === $ownerUid && newData.child('ownerUid').val() === auth.uid && newData.child('roomId').val() === $roomId",
+              ".validate": "newData.hasChildren(['dataUrl','contentType','name','size','ownerUid','roomId','createdAt']) && newData.child('dataUrl').isString() && newData.child('dataUrl').val().length <= 7500000 && newData.child('size').isNumber() && newData.child('size').val() <= 4194304"
+            }
+          }
+        }
+      }
+    }
+  }
+}

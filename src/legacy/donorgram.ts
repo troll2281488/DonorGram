@@ -86,13 +86,13 @@ export function optimizeCallSdp(sdp: string, video: boolean): string {
   let result = sdp;
   if (!/maxaveragebitrate=/.test(result)) {
     result = result.replace(
-      /a=rtpmap:(\\d+) opus\\/48000\\/2/g,
+      /a=rtpmap:(\d+) opus\/48000\/2/g,
       (_match, payload: string) =>
-        `a=rtpmap:${payload} opus/48000/2\\r\\na=fmtp:${payload} minptime=10;useinbandfec=1;maxaveragebitrate=32000`,
+        `a=rtpmap:${payload} opus/48000/2\r\na=fmtp:${payload} minptime=10;useinbandfec=1;maxaveragebitrate=32000`,
     );
   }
   if (video && !/b=AS:/.test(result)) {
-    result = result.replace(/(m=video [^\\r\\n]+)/g, "$1\\r\\nb=AS:350");
+    result = result.replace(/(m=video [^\r\n]+)/g, "$1\r\nb=AS:350");
   }
   return result;
 }

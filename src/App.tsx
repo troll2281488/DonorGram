@@ -104,12 +104,16 @@ export default function App() {
             createdBy: user.uid, createdAt: serverTimestamp()
           });
           setActiveId(room.id);
-        } catch {
+        } catch (error) {
           initializedRoomFor.current = null;
-          setNotice("Не удалось создать первый чат. Проверь публикацию Firestore Rules в Firebase Console.");
+          const detail = error instanceof Error ? error.message : String(error);
+          setNotice(`Не удалось создать первый чат: ${detail}`);
         }
       }
-    }, () => setNotice("Не удалось загрузить чаты. Проверь Firestore Rules и интернет."));
+    }, error => {
+      const detail = error?.message || "без подробностей";
+      setNotice(`Не удалось загрузить чаты: ${error?.code || "unknown"} — ${detail}`);
+    });
   }, [user]);
 
   useEffect(() => {

@@ -18,7 +18,7 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == userId;
     }
 
-    match /publicProfiles/{userId} {\n      allow read: if signedIn();\n      allow create, update: if signedIn() && request.auth.uid == userId\n        && request.resource.data.uid == userId\n        && request.resource.data.keys().hasOnly(['uid','displayName','createdAt']);\n      allow delete: if signedIn() && request.auth.uid == userId;\n    }\n\n    match /rooms/{roomId} {
+    match /publicProfiles/{userId} {\n      allow read: if signedIn();\n      allow create, update: if signedIn() && request.auth.uid == userId\n        && request.resource.data.uid == userId\n        && request.resource.data.keys().hasOnly(['uid','displayName','displayNameLower','createdAt']);\n      allow delete: if signedIn() && request.auth.uid == userId;\n    }\n\n    match /rooms/{roomId} {
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
         && request.auth.uid in request.resource.data.members

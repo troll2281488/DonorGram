@@ -20,7 +20,7 @@ import { uploadRoomMedia, getRoomMediaUrl } from "./legacy/media";
 
 type ChatMessage = {
   id: string; text: string; uid: string; displayName: string;
-  media?: { storagePath: string; mediaType: "image" | "video" | "file"; name: string; size: number; contentType: string };
+  media?: { storagePath: string; mediaType: "image" | "video" | "audio" | "file"; name: string; size: number; contentType: string };
   createdAt?: { toDate?: () => Date } | null;
 };
 type ChatRoom = { id: string; name: string; type: "direct" | "group"; members: string[]; lastMessage?: string };
@@ -244,6 +244,7 @@ export default function App() {
     if (!file || !user || !db || !activeId || activeId === "loading" || activeId === "guest") return;
     setMediaBusy(true);
     try {
+      await dbSet(dbRef(realtimeDb, `roomMembers/${activeId}/${user.uid}`), true);
       const media = await uploadRoomMedia(activeId, user.uid, file);
       await addDoc(collection(db, "rooms", activeId, "messages"), {
         text: "", uid: user.uid, displayName: user.displayName || "Пользователь",
@@ -376,7 +377,7 @@ export default function App() {
           <div className="end-spacer"/>
         </section>
         <form className="composer" onSubmit={sendMessage}>
-          <div className="composer-toolbar"><div className="composer-tools"><input ref={fileInputRef} type="file" hidden accept="image/*,video/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.zip" onChange={handleMediaSelected}/><button type="button" className="composer-tool" aria-label="Прикрепить файл" disabled={mediaBusy || !user} onClick={()=>fileInputRef.current?.click()}><Paperclip size={17}/></button><button type="button" className="composer-tool" aria-label="Добавить изображение" disabled={mediaBusy || !user} onClick={()=>{if(fileInputRef.current) {fileInputRef.current.accept="image/*";fileInputRef.current.click();}}}><Image size={17}/></button><span className="tool-divider"/><button type="button" className="composer-tool" onClick={()=>setPanel("ai")}><Sparkles size={16}/><span>Спросить DonAI</span></button></div><span className="composer-hint">{mediaBusy ? "Загружаю вложение…" : "Enter — отправить"}</span></div>
+          <div className="composer-toolbar"><div className="composer-tools"><input ref={fileInputRef} type="file" hidden accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.zip" onChange={handleMediaSelected}/><button type="button" className="composer-tool" aria-label="Прикрепить файл" disabled={mediaBusy || !user} onClick={()=>fileInputRef.current?.click()}><Paperclip size={17}/></button><button type="button" className="composer-tool" aria-label="Добавить изображение" disabled={mediaBusy || !user} onClick={()=>{if(fileInputRef.current) {fileInputRef.current.accept="image/*";fileInputRef.current.click();}}}><Image size={17}/></button><span className="tool-divider"/><button type="button" className="composer-tool" onClick={()=>setPanel("ai")}><Sparkles size={16}/><span>Спросить DonAI</span></button></div><span className="composer-hint">{mediaBusy ? "Загружаю вложение…" : "Enter — отправить"}</span></div>
           <textarea aria-label="Текст сообщения" placeholder={user ? `Написать в ${activeRoom.name}...` : "Войди в аккаунт, чтобы переписываться"} value={draft} onChange={e=>setDraft(e.target.value)} disabled={!user || activeRoom.id === "loading"} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();void sendMessage();}}} rows={2} maxLength={4000}/>
           <div className="composer-bottom"><div className="composer-status"><span className="status-lock"><ShieldCheck size={13}/></span><span>Сообщения до 4 000 символов</span></div><div className="composer-submit"><span className="char-count">{draft.length}/4000</span><button type="submit" className="send-btn" disabled={!user || activeRoom.id === "loading" || !draft.trim()}><span>Отправить</span><Send size={15}/></button></div></div>
         </form>

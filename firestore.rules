@@ -33,7 +33,7 @@ service cloud.firestore {
         && request.resource.data.members.size() <= 100
         && request.resource.data.keys().hasOnly(['name','type','members','createdBy','createdAt'])
         && request.resource.data.members.size() >= 1;
-      allow read: if isMember(roomId);
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
       // Membership management should be implemented server-side before enabling updates.
       allow update, delete: if false;
 

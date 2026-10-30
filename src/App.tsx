@@ -14,7 +14,8 @@ import {
   addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp,
   setDoc, where, limit, getDocs, getDoc, startAt, endAt, orderBy as orderByField
 } from "firebase/firestore";
-import { auth, db, realtimeDb, firebaseReady } from "./firebase";
+import { auth, db, realtimeDb, firebaseReady, functions } from "./firebase";
+import { httpsCallable } from "firebase/functions";
 import { ref as dbRef, set as dbSet } from "firebase/database";
 import { uploadRoomMedia, getRoomMediaUrl } from "./legacy/media";
 
@@ -71,6 +72,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiAnswer, setAiAnswer] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
   const [locationState, setLocationState] = useState<"off" | "loading" | "ready" | "error">("off");
   const [coords, setCoords] = useState<{lat:number; lng:number} | null>(null);
   const [compactMode, setCompactMode] = useState(false);
@@ -287,15 +289,26 @@ export default function App() {
     } catch { setNotice("Не удалось создать группу. Проверь Firestore Rules."); }
   }
 
-  function askAi(e: React.FormEvent) {
+  async function askAi(e: React.FormEvent) {
     e.preventDefault();
     const p = aiPrompt.trim();
-    if (!p) return;
-    setAiAnswer(`DonAI · локальный режим
-
-Я получил запрос: «${p}»
-
-Это демонстрационная заглушка: для настоящих ответов подключи серверную Cloud Function с выбранной AI-моделью. Не храни секретный API-ключ в браузере. Сервер должен проверять авторизацию и ограничивать частоту запросов.`);
+    if (!p || aiBusy) return;
+    if (!user || !functions) {
+      setAiAnswer("Войди в аккаунт, чтобы пользоваться DonAI.");
+      return;
+    }
+    setAiBusy(true);
+    setAiAnswer("");
+    try {
+      const call = httpsCallable<{ prompt: string }, { answer: string }>(functions, "askDonAI");
+      const result = await call({ prompt: p });
+      setAiAnswer(result.data.answer || "Модель не вернула текст.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Неизвестная ошибка";
+      setAiAnswer(`Не удалось получить ответ DonAI: ${message}. Проверь, что Cloud Function развёрнута и секрет OFOX_API_KEY добавлен в Firebase.`);
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   function shareLocation() {

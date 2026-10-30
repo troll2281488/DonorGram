@@ -12,7 +12,7 @@ import {
 import type { User } from "firebase/auth";
 import {
   addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp,
-  setDoc, where, limit
+  setDoc, where, limit, getDocs, startAt, endAt, orderBy as orderByField
 } from "firebase/firestore";
 import { auth, db, firebaseReady } from "./firebase";
 
@@ -60,6 +60,9 @@ export default function App() {
   const [panel, setPanel] = useState<"none" | "ai" | "settings" | "newgroup" | "gps" | "calls">("none");
   const [groupName, setGroupName] = useState("");
   const [groupMemberEmails, setGroupMemberEmails] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [userResults, setUserResults] = useState<{uid:string;displayName:string}[]>([]);
+  const [userSearchBusy, setUserSearchBusy] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiAnswer, setAiAnswer] = useState("");
@@ -126,13 +129,42 @@ export default function App() {
         if (displayName.trim()) await updateProfile(cred.user, { displayName: displayName.trim() });
         await setDoc(doc(db!, "users", cred.user.uid), {
           uid: cred.user.uid, displayName: displayName.trim() || email.split("@")[0],
-          email: email.trim().toLowerCase(), createdAt: serverTimestamp(), discoverable: false
+          email: email.trim().toLowerCase(), createdAt: serverTimestamp(), discoverable: true
         });
-        setNotice("Аккаунт создан. Для поиска пользователей добавь отдельный opt-in каталог.");
-      } else await signInWithEmailAndPassword(auth, email.trim(), password);
+        await setDoc(doc(db!, "publicProfiles", cred.user.uid), { uid: cred.user.uid, displayName: displayName.trim() || email.split("@")[0], createdAt: serverTimestamp() });
+        setNotice("Аккаунт создан. Твой профиль виден зарегистрированным пользователям по имени.");
+      } else {
+        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+        await setDoc(doc(db!, "publicProfiles", cred.user.uid), { uid: cred.user.uid, displayName: cred.user.displayName || email.split("@")[0] }, { merge: true });
+      }
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Не удалось войти. Проверь данные.");
     } finally { setAuthBusy(false); }
+  }
+
+  async function searchUsers(e: React.FormEvent) {
+    e.preventDefault();
+    if (!db || !user || !userSearch.trim()) return;
+    setUserSearchBusy(true); setUserResults([]);
+    try {
+      const term = userSearch.trim().toLocaleLowerCase();
+      const q = query(collection(db, "publicProfiles"), orderByField("displayName"), startAt(term), endAt(term + "\\uf8ff"), limit(12));
+      const snap = await getDocs(q);
+      setUserResults(snap.docs.map(d => ({ uid: String(d.data().uid || d.id), displayName: String(d.data().displayName || "Пользователь") })).filter(p => p.uid !== user.uid));
+      if (!snap.docs.length) setNotice("Пользователи с таким именем не найдены.");
+    } catch { setNotice("Поиск не удался. Проверь публикацию Firestore Rules."); }
+    finally { setUserSearchBusy(false); }
+  }
+
+  async function openDirectChat(other: {uid:string;displayName:string}) {
+    if (!db || !user) return;
+    const members = [user.uid, other.uid].sort();
+    const roomId = "dm_" + members.join("_");
+    try {
+      await setDoc(doc(db, "rooms", roomId), { name: other.displayName, type: "direct", members, createdBy: user.uid, createdAt: serverTimestamp() }, { merge: true });
+      setActiveId(roomId); setPanel("none"); setUserSearch(""); setUserResults([]);
+      setNotice("Личный чат открыт. Теперь сообщения синхронизируются между участниками.");
+    } catch { setNotice("Не удалось открыть чат. Проверь правила Firestore."); }
   }
 
   async function sendMessage(e?: React.FormEvent) {
@@ -283,7 +315,7 @@ export default function App() {
           <div className="panel-head"><div><span className="panel-eyebrow">DONORGRAM NOVA</span><h2>{panel==="ai"?"DonAI помощник":panel==="settings"?"Настройки":panel==="newgroup"?"Новое пространство":panel==="gps"?"Геопозиция":"Звонки"}</h2></div><button className="icon-btn" aria-label="Закрыть" onClick={()=>setPanel("none")}><X size={18}/></button></div>
           {panel==="ai" && <div className="panel-content"><div className="ai-hero"><div className="ai-orb"><Sparkles size={26}/></div><h3>DonAI</h3><p>Помощник для черновиков, идей и кратких пересказов.</p><span className="mode-chip">ДЕМО · БЕЗ API</span></div><div className="ai-response">{aiAnswer || "Привет! Я пока работаю в режиме демонстрации. Настоящий ИИ подключается через серверную функцию, чтобы секретный ключ не попадал в браузер."}</div><form className="panel-form" onSubmit={askAi}><label htmlFor="ai-prompt">Что нужно сделать?</label><textarea id="ai-prompt" rows={3} value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} placeholder="Например: сократи этот текст до 3 пунктов..." maxLength={2000}/><button className="primary-btn"><Sparkles size={16}/> Подготовить запрос</button></form><p className="panel-footnote">Не отправляй пароли, платёжные данные или личные секреты в ИИ.</p></div>}
           {panel==="settings" && <div className="panel-content"><div className="settings-profile"><div className="avatar profile-big">{initials(user?.displayName || "Nova")}</div><div><h3>{user?.displayName || "Гость Nova"}</h3><p>{user?.email || "Аккаунт не подключён"}</p></div></div><div className="settings-row"><div><strong>Компактный интерфейс</strong><span>Больше сообщений на экране</span></div><button className={`toggle ${compactMode?"on":""}`} role="switch" aria-checked={compactMode} onClick={()=>setCompactMode(v=>!v)}><span/></button></div><div className="settings-row"><div><strong>Экономный режим</strong><span>Не загружать медиа автоматически</span></div><span className="setting-active"><Check size={14}/> Включён</span></div><div className="settings-row"><div><strong>Уведомления</strong><span>Настраиваются после подключения FCM</span></div><Bell size={17}/></div><div className="settings-row"><div><strong>Безопасность</strong><span>Настрой правила доступа в Firebase</span></div><ShieldCheck size={17}/></div>{user&&<button className="danger-btn" onClick={()=>auth&&signOut(auth)}>Выйти из аккаунта</button>}<button className="secondary-btn" onClick={()=>setNotice("Смотри README.md: архитектура, правила Firebase и план запуска.")}><CircleHelp size={16}/> Документация проекта</button></div>}
-          {panel==="newgroup" && <div className="panel-content"><div className="panel-intro">Создай пространство для команды, друзей или проекта.</div><form className="panel-form" onSubmit={createGroup}><label htmlFor="group-name">Название</label><input id="group-name" value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Например, Команда" maxLength={60} required/><label htmlFor="group-members">Email участников (следующий этап)</label><textarea id="group-members" value={groupMemberEmails} onChange={e=>setGroupMemberEmails(e.target.value)} placeholder="friend@example.com" rows={2}/><p className="panel-footnote">В этом каркасе создаётся группа с тобой. Приглашения и поиск пользователей требуют серверной проверки.</p><button className="primary-btn"><Plus size={16}/> Создать пространство</button></form></div>}
+          {panel==="newgroup" && <div className="panel-content"><div className="panel-intro">Создай пространство для команды, друзей или проекта.</div><form className="panel-form" onSubmit={createGroup}><label htmlFor="group-name">Название</label><input id="group-name" value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Например, Команда" maxLength={60} required/><button className="primary-btn"><Plus size={16}/> Создать пространство</button></form><div className="panel-form"><label htmlFor="user-search">Найти человека по имени</label><form onSubmit={searchUsers}><input id="user-search" value={userSearch} onChange={e=>setUserSearch(e.target.value)} placeholder="Имя пользователя" maxLength={40}/><button className="primary-btn" disabled={!userSearch.trim() || userSearchBusy}>{userSearchBusy?"Ищем…":"Найти"}</button></form>{userResults.map(p=><button key={p.uid} className="secondary-btn" onClick={()=>void openDirectChat(p)}>{p.displayName} · Написать</button>)}<p className="panel-footnote">В поиске показываются имя и внутренний идентификатор. Email не раскрывается.</p></div></form></div>}
           {panel==="gps" && <div className="panel-content"><div className="gps-hero"><div className="gps-icon"><MapPin size={28}/></div><h3>Геопозиция — только по запросу</h3><p>Координаты не отправляются никому автоматически. Браузер попросит разрешение.</p></div><button className="primary-btn full-btn" onClick={shareLocation} disabled={locationState==="loading"}><MapPin size={16}/>{locationState==="loading"?"Определяем…":"Определить мою позицию"}</button>{locationState==="ready"&&coords&&<div className="coordinate-card"><span>Текущие координаты</span><strong>{coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</strong><p>Пока хранятся только в памяти этой страницы.</p><button className="secondary-btn" onClick={()=>{void navigator.clipboard?.writeText(`${coords.lat},${coords.lng}`);setNotice("Координаты скопированы, если браузер разрешил доступ.");}}><Copy size={15}/> Копировать координаты</button></div>}{locationState==="error"&&<p className="error-text">Не удалось получить геопозицию. Проверь разрешение браузера и HTTPS.</p>}<p className="panel-footnote">Для обмена координатами добавь отдельную кнопку «Поделиться на 15 минут», серверное истечение доступа и возможность отозвать разрешение.</p></div>}
           {panel==="calls" && <div className="panel-content"><div className="call-illustration"><div className="call-rings"><Phone size={30}/></div><h3>Аудио и видеозвонки</h3><p>Интерфейс подготовлен, но соединение ещё не реализовано.</p></div><div className="feature-note"><ShieldCheck size={18}/><div><strong>WebRTC + сигналинг</strong><p>Для настоящих звонков нужны обмен offer/answer и ICE-кандидатами, STUN/TURN и правила авторизации. Firebase сам по себе не переносит голос.</p></div></div><div className="feature-note"><Zap size={18}/><div><strong>Сначала аудио</strong><p>Аудиозвонки обычно расходуют меньше трафика, чем видео. Видео лучше включать вручную.</p></div></div><button className="secondary-btn full-btn" onClick={()=>setNotice("Звонки не запускаются в демо: нет signaling-сервера, TURN и обработки входящих вызовов.")}>Почему звонок пока недоступен?</button></div>}
         </section>

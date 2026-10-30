@@ -91,25 +91,37 @@ export default function App() {
     }
     const q = query(collection(db, "rooms"), where("members", "array-contains", user.uid), limit(80));
     return onSnapshot(q, async snap => {
-      const next = snap.docs.map(d => ({ id: d.id, ...d.data() } as ChatRoom));
-      setRooms(next);
-      setNotice("");
-      if (next.length) {
-        setActiveId(current => next.some(r => r.id === current) ? current : next[0].id);
-        initializedRoomFor.current = user.uid;
-      } else if (initializedRoomFor.current !== user.uid) {
-        initializedRoomFor.current = user.uid;
-        try {
-          const room = await addDoc(collection(db, "rooms"), {
-            name: "Nova Lounge", type: "group", members: [user.uid],
-            createdBy: user.uid, createdAt: serverTimestamp()
-          });
-          setActiveId(room.id);
-        } catch (error) {
-          initializedRoomFor.current = null;
-          const detail = error instanceof Error ? error.message : String(error);
-          setNotice(`Не удалось создать первый чат: ${detail}`);
+      const ownRooms = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as ChatRoom))
+        .filter(r => r.id !== "nova_lounge" && r.name !== "Nova Lounge");
+      try {
+        const publicRoomRef = doc(db, "rooms", "nova_lounge");
+        let publicRoomSnap = await getDoc(publicRoomRef);
+        if (!publicRoomSnap.exists()) {
+          try {
+            await setDoc(publicRoomRef, {
+              name: "Nova Lounge", type: "group", members: [user.uid],
+              createdBy: user.uid, createdAt: serverTimestamp()
+            });
+          } catch {
+            // Another account may have created the shared room at the same time.
+          }
+          publicRoomSnap = await getDoc(publicRoomRef);
         }
+        const publicRoom = publicRoomSnap.exists()
+          ? ({ id: "nova_lounge", ...publicRoomSnap.data() } as ChatRoom)
+          : null;
+        const next = [...(publicRoom ? [publicRoom] : []), ...ownRooms];
+        setRooms(next);
+        setNotice(publicRoom ? "" : "Не удалось открыть общий Nova Lounge. Проверь публикацию правил Firestore.");
+        if (next.length) {
+          setActiveId(current => next.some(r => r.id === current) ? current : (publicRoom ? "nova_lounge" : next[0].id));
+        }
+        initializedRoomFor.current = user.uid;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        setRooms(ownRooms);
+        setNotice(`Не удалось открыть общий Nova Lounge: ${detail}`);
       }
     }, error => {
       const detail = error?.message || "без подробностей";
